@@ -8,7 +8,14 @@ import {
 import { Loader } from '../Loader'
 import './Map.scss'
 import { db } from '../../firebase'
-import { collection, addDoc } from "firebase/firestore"; 
+import {
+  collection,
+  addDoc,
+  getDocs,
+  updateDoc,
+  doc,
+  deleteDoc,
+} from 'firebase/firestore'
 
 interface MarkerData {
   id: number
@@ -37,10 +44,33 @@ export const Map = () => {
   })
 
   const [markers, setMarkers] = useState<MarkerData[]>([])
-  const [lastMarkerId, setLastMarkerId] = useState<number>(1)
+
+  useEffect(() => {
+    const fetchMarkers = async () => {
+      const loadedMarkers = await loadMarkers()
+      setMarkers(loadedMarkers)
+    }
+
+    fetchMarkers()
+  }, [])
+
+  const loadMarkers = async () => {
+    const querySnapshot = await getDocs(collection(db, 'markers'))
+    const loadedMarkers: MarkerData[] = []
+    querySnapshot.forEach((doc) => {
+      const data = doc.data()
+      loadedMarkers.push({
+        id: data.Quest,
+        label: data.Quest.toString(),
+        position: data.location,
+        timeStamp: data.timestemp,
+      })
+    })
+    return loadedMarkers
+  }
+
   const [currentLocation, setCurrentLocation] =
     useState<google.maps.LatLngLiteral | null>(null)
-
 
   useEffect(() => {
     if (navigator.geolocation) {
@@ -60,68 +90,78 @@ export const Map = () => {
 
   const handleMapClick = async (event: google.maps.MapMouseEvent) => {
     if (event.latLng) {
-      const existingIds = markers.map((marker) => marker.id)
-
-      let freeIndex = 1
-      for (let i = 1; i <= lastMarkerId; i++) {
-        if (!existingIds.includes(i)) {
-          freeIndex = i
-          break
-        }
+      const querySnapshot = await getDocs(collection(db, 'markers'))
+  
+      const existingIds = new Set<number>()
+  
+      querySnapshot.forEach((doc) => {
+        const data = doc.data()
+        existingIds.add(data.Quest)
+      })
+  
+      let newId = 1
+      while (existingIds.has(newId)) {
+        newId++
       }
-
+  
       const newMarker = {
-        id: freeIndex,
+        id: newId,
         position: {
           lat: event.latLng.lat(),
           lng: event.latLng.lng(),
         },
-        label: freeIndex.toString(),
+        label: newId.toString(),
         timeStamp: Date.now(),
       }
-
-      setMarkers([...markers, newMarker])
-      setLastMarkerId((prevId) => Math.max(prevId, freeIndex + 1))
-
-      try {
-        const docRef = await addDoc(collection(db, "markers"), {
-          Quest: newMarker.label,
-          location: newMarker.position,
-          timestemp: newMarker.timeStamp
-        });
-        console.log("Document written with ID: ", docRef.id);
-      } catch (e) {
-        console.error("Error adding document: ", e);
-      }
+  
+      await addDoc(collection(db, 'markers'), {
+        Quest: newMarker.id,
+        location: newMarker.position,
+        timestemp: newMarker.timeStamp,
+      })
+  
+      setMarkers((prevMarkers) => [...prevMarkers, newMarker])
     }
   }
-
-  const handleDragEnd = (
+  
+  
+  const handleDragEnd = async (
     markerId: number,
     newPosition: google.maps.LatLngLiteral
   ) => {
-    const markerIndex = markers.findIndex((marker) => marker.id === markerId)
+    const markerDoc = doc(db, 'markers', markerId.toString())
+    await updateDoc(markerDoc, {
+      location: newPosition,
+    })
 
-    if (markerIndex !== -1) {
-      const updatedMarkers = [...markers]
-      updatedMarkers[markerIndex].position = newPosition
-      setMarkers(updatedMarkers)
-    }
+    setMarkers((prevMarkers) =>
+      prevMarkers.map((marker) =>
+        marker.id === markerId ? { ...marker, position: newPosition } : marker
+      )
+    )
   }
 
-  const handleDeleteMarker = (markerId: number) => {
-    const newMarkers = [...markers].filter((mark) => mark.id !== markerId)
+  const handleDeleteMarker = async (markerId: number) => {
+    const querySnapshot = await getDocs(collection(db, 'markers'))
+    querySnapshot.forEach((doc) => {
+      const data = doc.data()
+      if (data.Quest === markerId) {
+        deleteDoc(doc.ref)
+      }
+    })
 
-    setMarkers(newMarkers)
-
-    if (newMarkers.length === 0) {
-      setLastMarkerId(1)
-    }
+    setMarkers((prevMarkers) =>
+      prevMarkers.filter((marker) => marker.id !== markerId)
+    )
   }
 
-  const deleteAllMarkers = () => {
+  const deleteAllMarkers = async () => {
+    const querySnapshot = await getDocs(collection(db, 'markers'))
+    querySnapshot.forEach((doc) => {
+      deleteDoc(doc.ref)
+    })
+
     setMarkers([])
-    setLastMarkerId(1)
   }
 
   return isLoaded ? (
