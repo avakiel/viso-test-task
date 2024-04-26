@@ -1,0 +1,28 @@
+.controls {
+    position: relative;
+  
+    margin-top: 10px;
+  
+    display: flex;
+    justify-content: center;
+    z-index: 10;
+  
+    &__delete {
+      height: 40px;
+      width: 160px;
+      
+      font-size: 16px;
+      font-weight: 600;
+      border: none;
+      cursor: pointer;
+      color: rgb(85, 85, 85);
+  
+      background-color: white;
+      box-shadow: rgba(0, 0, 0, 0.3) 0px 1px 4px -1px
+    }
+  
+    &__delete:hover {
+      color: black;
+    }
+  }
+  
